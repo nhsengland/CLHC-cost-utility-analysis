@@ -5,15 +5,26 @@
 # assumed 10% reduction in the decompensation hazard following cirrhosis identification.
 
 # It is identical to the base-case script except for the post-identification cirrhosis-management 
-# decompensation hazard reduction, and the cirrhosis management costing process, which only applies 
-# a cirrhosis management cost following assumed cirrhosis identification (i.e. from model entry 
-# for the CLHC arm and from surveillance referral or symptomatic HCC diagnosis in the usual care arm).
+# decompensation hazard reduction ("decompensation_rate_ratio_after_identification"), and the 
+# cirrhosis management costing process, which only applies the cirrhosis management cost
+# ("annual_compensated_cirrhosis") following assumed cirrhosis identification (i.e. from model entry 
+# for the CLHC arm and from surveillancereferral or symptomatic HCC diagnosis in the usual care arm).
 
 # The script must be run from the root of the extracted repository,
 # preferably by opening CLHC-cost-utility-analysis.Rproj
 
+# Script structure:
+# 1. Set simulation configurations and input/output paths, and load the DES cohort
+# 2. Define model parameters
+# 3. Model helper functions
+# 4. Baseline sampling and subgroup preparation
+# 5. Event scheduling and patient simulation
+# 6. Arm-level and replication-level simulation
+# 7. Pooled results, model checks, and subgroup analyses
+# 8. Save outputs
+
 # ================================================================================================
-# Import libraries, define simulation configs, set file directories, and load simulation cohort
+# 1. Import libraries, define simulation configs, set file directories, and load simulation cohort
 # ================================================================================================
 
 # Import libraries
@@ -25,15 +36,15 @@ library(ggplot2)
 library(furrr)
 library(future)
 
-# Use all logical cores in parallel to speed up simulation
-n_workers <- max(1, future::availableCores())
+# Use all logical cores, except 2 (for operating system stability), in parallel to speed up simulation
+n_workers <- max(1, future::availableCores()-2)
 plan(multisession, workers = n_workers)
 
 # Set random seed for reproducibility
 set.seed(12345)
 
 # Set number of Monte Carlo replications
-n_replications <- 500
+n_replications <- 5 # Set to 5 for synthetic run only (500 for actual simulation)
 
 # Set project directory from the current working directory
 clhc_project_directory <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
@@ -42,7 +53,7 @@ clhc_project_directory <- normalizePath(getwd(), winslash = "/", mustWork = TRUE
 des_cohort_input_directory <- file.path(clhc_project_directory, "CLHC_dataset", "cleaned_with_uptake_predictions")
 
 # Set output directories
-des_output_directory <- file.path(clhc_project_directory, "outputs", "DES", "base_case")
+des_output_directory <- file.path(clhc_project_directory, "outputs", "DES", "cirrhosis_management_scenario")
 subgroup_output_directory <- file.path(des_output_directory, "subgroup_analyses")
 
 # Create output directories if they do not already exist
@@ -67,33 +78,56 @@ if (!file.exists(des_cohort_file)) {
 des_cohort <- readRDS(des_cohort_file)
 
 # ================================================================================================
-# Parameter definition object
+# 2. Parameter definition object
 # ================================================================================================
 
-# Unless otherwise defined, all parameters are in terms of annual hazard rates (i.e. events per year) 
+# Rates are expressed as annual hazards unless otherwise stated
+# Probabilities, costs, and utilities are identified separately
 
 params <- list(
   
+  # --------------------------------------------------------------------
+  # General model settings
+  # --------------------------------------------------------------------
   settings = list(
     max_age = 100,
     surveillance_interval_years = 0.5,
-    # 3.5% annual discount rates for costs and utilities:
+    # Annual discount rates for costs and QALYs
     discount_rate_costs = 0.035,
     discount_rate_qalys = 0.035,
-    post_resection_ablation_disease_free = 5 # Assumption of disease free state x years post-resection/ablation
+    # Post-resection or ablation mortality window, after which surviving
+    # patients are assumed disease-free and may re-enter surveillance
+    post_resection_ablation_disease_free = 5
   ),
   
+  # --------------------------------------------------------------------
+  # Usual-care pathway
+  # --------------------------------------------------------------------
   usual_care = list(
-    surveillance_coverage = 0.40, # Proportion; sensitivity analysis: lower = 0.20, upper = 0.60
-    surveillance_referral_rate_among_covered = 0.50 # Annual referral rate among the 40% who will eventually be offered surveillance
+    # Proportion eventually offered surveillance
+    surveillance_coverage = 0.40,
+    
+    # Annual referral rate among covered patients
+    surveillance_referral_rate_among_covered = 0.50
   ),
   
+  # --------------------------------------------------------------------
+  # Baseline cirrhosis status
+  # --------------------------------------------------------------------
   baseline_cirrhosis_severity = list(
+    # FibroScan PPV for compensated cirrhosis
     p_compensated = 0.69,
-    p_non_cirrhotic = 0.31, # These patients are dropped from the simulation, as outcomes identical across arms
-    p_decompensated = 0.00 # Assume no decompensated cirrhosis patients at baseline
+    
+    # Non-cirrhotic probability (these patients are dropped from the simulation, as outcomes identical across arms)
+    p_non_cirrhotic = 0.31,
+    
+    # Assume no decompensated cirrhosis patients at baseline
+    p_decompensated = 0.00
   ),
   
+  # --------------------------------------------------------------------
+  # Natural history
+  # --------------------------------------------------------------------
   natural_history = list(
     hcc_incidence_annual = list( # HCC incidence conditional on compensated cirrhosis
       alcohol = 0.009,
@@ -103,12 +137,14 @@ params <- list(
       none_flagged = 0.010
     ),
     
-    decompensation_incidence_annual = 0.060, # Compensated --> Decompensated incidence
+    # Annual compensated-to-decompensated cirrhosis rate
+    decompensation_incidence_annual = 0.060,
     
     # Exploratory scenario assumption: a 10% reduction in the decompensation
     # hazard after cirrhosis identification
     decompensation_rate_ratio_after_identification = 0.90,
     
+    # Annual untreated HCC progression rates
     hcc_progression_annual = list(
       early_to_intermediate = 0.347,
       intermediate_to_advanced = 0.693,
@@ -159,6 +195,9 @@ params <- list(
     excess_mortality_hcc_terminal_known_annual  = 1.454
   ),
   
+  # --------------------------------------------------------------------
+  # Treatment allocation
+  # --------------------------------------------------------------------
   treatment_allocation = list( # Probabilities (exact fractions used to avoid rounding error)
     
     early = c(
@@ -198,6 +237,9 @@ params <- list(
     annual_receipt_rate = 2.0 # I.e. ~ one transplant every 0.5 years
   ),
   
+  # --------------------------------------------------------------------
+  # Annual post-HCC-treatment mortality hazards
+  # --------------------------------------------------------------------
   post_treatment_mortality_annual = list(
     transplant = 0.037,
     resection_ablation = 0.120,
@@ -205,16 +247,26 @@ params <- list(
     systemic = 1.027
   ),
   
-  surveillance = list( # Probabilities
+  # --------------------------------------------------------------------
+  # Surveillance test performance
+  # --------------------------------------------------------------------
+  surveillance = list(
+    # Stage-specific probability of detecting HCC when HCC is present
     ultrasound_sensitivity = list(
       early = 0.630,
       intermediate = 0.800,
       advanced = 0.970,
       terminal = 0.970
     ),
-    ultrasound_specificity = 0.840 # Equivalent to false-positive rate of 16%
+    
+    # Probability of a negative result when HCC is absent
+    # Equivalent to a false-positive probability of 16%
+    ultrasound_specificity = 0.840
   ),
   
+  # --------------------------------------------------------------------
+  # Stage-specific symptomatic HCC diagnosis rates
+  # --------------------------------------------------------------------
   symptomatic_diagnosis = list(
     early = 0.016,
     intermediate = 0.129,
@@ -222,6 +274,9 @@ params <- list(
     terminal = 0.693
   ),
   
+  # --------------------------------------------------------------------
+  # Costs
+  # --------------------------------------------------------------------
   costs = list(
     # CLHC positive case-finding cost
     clhc_scan = 1594.13,
@@ -254,31 +309,43 @@ params <- list(
     hcc_palliative_care = 9794.00
   ),
   
+  # --------------------------------------------------------------------
+  # Health-related quality of life (HRQoL) weights
+  # --------------------------------------------------------------------
   utilities = list(
+    # Cirrhosis-state utilities
     compensated_cirrhosis = 0.750,
     decompensated_cirrhosis = 0.660,
     
+    # HCC-stage utilities
     hcc_early = 0.736,
     hcc_intermediate = 0.661,
     hcc_advanced = 0.661,
     hcc_terminal = 0.640,
     
     # Post-treatment utilities
-    # Non-curative treatment utilities are calculated using pre-existing HCC_state
+    # Non-curative treatment utilities retain the current HCC-stage utility
     post_resection_ablation = 0.730,
     post_transplant = 0.730
   )
 )
 
 # ================================================================================================
-# Parameter sampling helper functions
+# 3. Model helper functions
 # ================================================================================================
 
+# ----------------------------------------------------------------------
+# Time-to-event sampling, discounting, and age classification
+# ----------------------------------------------------------------------
+
+# Sample time until an event from an exponential distribution
 sample_time_to_event <- function(rate) {
   if (is.na(rate) || rate <= 0) return(Inf)
   rexp(1, rate = rate)
 }
 
+# Calculate the present-value multiplier at a specified time point
+# Example: at five years and a 3.5% annual rate, 1 / 1.035^5 = 0.842
 discount_factor <- function(time_years, annual_rate) {
   1 / ((1 + annual_rate) ^ time_years)
 }
@@ -317,17 +384,25 @@ sample_time_to_background_death <- function(start_age, sex, params) {
     current_age <- start_age + current_time
     age_group <- get_age_group(current_age)
     
-    # Fast base-vector index pull
+    # Retrieve the annual mortality hazard for the current age group
     annual_hazard <- patient_profile$Mortality_rate[patient_profile$Age_group == age_group]
     
+    # Convert the annual hazard to the monthly interval and accumulate it
     interval_hazard <- annual_hazard * step_years
     cumulative_hazard <- cumulative_hazard + interval_hazard
     
+    # Return the elapsed time once the mortality threshold is reached
     if (cumulative_hazard >= target_cum_hazard) return(current_time)
+    
+    # Move to the next monthly interval
     current_time <- current_time + step_years
   }
   Inf
 }
+
+# ----------------------------------------------------------------------
+# Natural-history and mortality rates
+# ----------------------------------------------------------------------
 
 get_background_hazard <- function(current_age, sex, params) {
   age_group <- get_age_group(current_age)
@@ -355,12 +430,12 @@ get_hcc_progression_rate <- function(hcc_state, treatment, params) {
   if (hcc_state == "early") return(params$natural_history$hcc_progression_annual$early_to_intermediate)
   if (hcc_state == "intermediate") return(params$natural_history$hcc_progression_annual$intermediate_to_advanced)
   if (hcc_state == "advanced") return(params$natural_history$hcc_progression_annual$advanced_to_terminal)
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 get_decompensation_death_rate <- function(cirrhosis_state, params) {
   if (cirrhosis_state == "decompensated") return(params$natural_history$excess_mortality_decompensated_annual)
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 get_untreated_hcc_death_rate <- function(hcc_state, hcc_diagnosed, params) {
@@ -383,7 +458,7 @@ get_untreated_hcc_death_rate <- function(hcc_state, hcc_diagnosed, params) {
     }
   }
   
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 # Returns the total all-cause replacement hazard for treated patients
@@ -395,15 +470,19 @@ get_post_treatment_mortality_rate <- function(treatment, params) {
   if (treatment == "tace") return(params$post_treatment_mortality_annual$tace)
   if (treatment == "systemic") return(params$post_treatment_mortality_annual$systemic)
   
-  0
+  0 # Return 0 if the event is not applicable
 }
+
+# ----------------------------------------------------------------------
+# Surveillance, treatment, cost, and utility functions
+# ----------------------------------------------------------------------
 
 get_ultrasound_sensitivity <- function(hcc_state, params) {
   if (hcc_state == "early") return(params$surveillance$ultrasound_sensitivity$early)
   if (hcc_state == "intermediate") return(params$surveillance$ultrasound_sensitivity$intermediate)
   if (hcc_state == "advanced") return(params$surveillance$ultrasound_sensitivity$advanced)
   if (hcc_state == "terminal") return(params$surveillance$ultrasound_sensitivity$terminal)
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 get_symptomatic_diagnosis_rate <- function(hcc_state, params) {
@@ -411,7 +490,7 @@ get_symptomatic_diagnosis_rate <- function(hcc_state, params) {
   if (hcc_state == "intermediate") return(params$symptomatic_diagnosis$intermediate)
   if (hcc_state == "advanced") return(params$symptomatic_diagnosis$advanced)
   if (hcc_state == "terminal") return(params$symptomatic_diagnosis$terminal)
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 allocate_treatment <- function(hcc_state, cirrhosis_state, params) {
@@ -436,7 +515,7 @@ get_treatment_cost <- function(treatment, params) {
   if (treatment == "transplant") return(params$costs$transplant_treatment)
   if (treatment == "tace") return(params$costs$tace_treatment)
   if (treatment == "systemic") return(params$costs$systemic_treatment)
-  0
+  0 # Return 0 if the event is not applicable
 }
 
 get_post_transplant_annual_cost <- function(time_point, treatment_start_time, params) {
@@ -543,6 +622,7 @@ get_current_utility <- function(cirrhosis_state, hcc_state, treatment, params) {
   return(min(hcc_utility, cirrhosis_utility))
 }
 
+# Accrue discounted costs and QALYs over the time interval between consecutive events
 accrue_between_events <- function(elapsed, time_start, cirrhosis_state, cirrhosis_identified, hcc_state, treatment, treatment_start_time, params) {
   if (elapsed <= 0 || is.infinite(elapsed)) return(list(costs = 0, qalys = 0))
   
@@ -571,7 +651,7 @@ accrue_between_events <- function(elapsed, time_start, cirrhosis_state, cirrhosi
 }
 
 # ================================================================================================
-# Pre-generate paired baseline cirrhosis severity & background mortality
+# 4a. Pre-generate paired baseline cirrhosis severity & background mortality
 # Sampled once before running both arms, so each individual has the same baseline severity and background mortality
 # ================================================================================================
 
@@ -580,17 +660,17 @@ baseline_cirrhosis_states <- c("non_cirrhotic", "compensated", "decompensated")
 baseline_cirrhosis_probs <- c(
   params$baseline_cirrhosis_severity$p_non_cirrhotic,
   params$baseline_cirrhosis_severity$p_compensated,
-  params$baseline_cirrhosis_severity$p_decompensated
+  params$baseline_cirrhosis_severity$p_decompensated # Will be 0
 )
 
 # Cirrhosis probabilities QA check
 stopifnot(
   length(baseline_cirrhosis_states) == length(baseline_cirrhosis_probs), # Ensure exactly one probability for every cirrhosis state
   all(baseline_cirrhosis_probs >= 0), # Ensure probabilities >= 0
-  abs(sum(baseline_cirrhosis_probs) - 1) < 1e-8 # Ensure probabilities round to 1
+  abs(sum(baseline_cirrhosis_probs) - 1) < 1e-8 # Ensure probabilities round to 1 (accounting for rounding error)
 )
 
-# Sample, and assign, baseline cirrhosis states to entire positive fibroscan cohort
+# Sample, and assign, baseline cirrhosis states to entire positive-FibroScan cohort
 des_cohort <- des_cohort %>%
   mutate(
     baseline_cirrhosis_severity = sample(
@@ -614,7 +694,8 @@ des_cohort <- des_cohort %>%
   ungroup()
 
 # ================================================================================================
-# Define subgroup membership before excluding non-cirrhotic patients
+# 4b. Define subgroup membership before excluding non-cirrhotic patients
+# so subgroup denominators and excluded upfront CLHC costs are retained
 # ================================================================================================
 
 # Create age subgroups from the original recorded age-group variable
@@ -642,7 +723,6 @@ des_cohort <- des_cohort %>%
       TRUE ~ NA_character_
     )
   )
-
 
 # Create long-format subgroup membership table, based on patient ID
 full_subgroup_membership <- bind_rows(
@@ -946,7 +1026,7 @@ compensated_subgroup_membership <-
   distinct()
 
 # ================================================================================================
-# Baseline cirrhosis severity QA, calculate excluded non-cirrhotic CLHC cost adjustment,
+# 4c. Baseline cirrhosis severity QA, calculate excluded non-cirrhotic CLHC cost adjustment,
 # and restrict cohort to compensated cirrhosis
 # ================================================================================================
 
@@ -970,14 +1050,14 @@ n_non_cirrhotic <- sum(
   na.rm = TRUE
 )
 
-# FibroScan-positive patients who are not truly cirrhotic under the baseline PPV assumption
+# FibroScan-positive patients who are not modelled as truly cirrhotic under the baseline PPV assumption
 # are excluded from the disease simulation, but still incur upfront CLHC pathway costs
 excluded_non_cirrhotic_clhc_cost <- n_non_cirrhotic *
   (params$costs$clhc_scan +
       params$costs$surveillance_referral_workup
   )
 
-# DES restricted to baseline compensated cirrhosis (baseline decompensated cirrhosis assumed to be zero)
+# DES cohort restricted to baseline compensated cirrhosis (baseline decompensated cirrhosis assumed to be 0)
 des_cohort <- des_cohort %>%
   filter(baseline_cirrhosis_severity == "compensated")
 
@@ -998,7 +1078,7 @@ message(sprintf(
 ))
 
 # ================================================================================================
-# Event scheduling helper
+# 5a. Function to schedule all events currently possible for a patient
 # ================================================================================================
 
 schedule_events <- function(
@@ -1007,7 +1087,10 @@ schedule_events <- function(
     next_surveillance_time, background_death_time, usual_care_ever_referred, params
 ) {
   
+  # Calculate the patient's remaining time before reaching the maximum modelled age
   max_time <- params$settings$max_age - patient$start_age
+  
+  # Initialise candidate event times with the maximum-age model exit
   event_times <- c(max_age = max_time)
   
   # Time since active treatment started, in years
@@ -1057,7 +1140,7 @@ schedule_events <- function(
       treatment_start_time +
       params$settings$post_resection_ablation_disease_free
     
-    # Do not return here to allow decompensation and other liver-disease events to be scheduled below
+    # No return here to allow decompensation and other liver-disease events to be scheduled below
   }
   
   # ----------------------------------------------------------------------
@@ -1150,7 +1233,6 @@ schedule_events <- function(
   }
   
   # HCC onset
-  
   if (hcc_state == "none" && cirrhosis_state %in% c("compensated", "decompensated")) {
     hcc_rate <- get_hcc_incidence_rate(patient, params)
     event_times["hcc_onset"] <- current_time + sample_time_to_event(hcc_rate)
@@ -1197,7 +1279,7 @@ schedule_events <- function(
 }
 
 # ================================================================================================
-# Simulate one patient, one arm
+# 5b. Function to simulate the lifetime event history and outcomes for one patient in one model arm
 # ================================================================================================
 
 simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
@@ -1350,6 +1432,8 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
     # ----------------------------------------------------------------------
     # Process next event
     # ----------------------------------------------------------------------
+    
+    # Mortality and model-exit events
     if (next_event == "max_age" || current_time >= max_time) {
       alive <- FALSE
       death_cause <- "max_age"
@@ -1376,6 +1460,7 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
       alive <- FALSE
       death_cause <- paste0("post_", treatment)
       
+    # Post-treatment state transitions  
     } else if (next_event == "post_resection_ablation_mortality_end") {
       
       # Patient survived the 5-year post-resection/ablation mortality window.
@@ -1404,6 +1489,7 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
           params = params
         )
       
+    # Disease onset and progression events  
     } else if (next_event == "hcc_onset") {
       if (!is.na(treatment) && treatment == "post_resection_ablation_survivor") {
         n_hcc_recurrences <- n_hcc_recurrences + 1
@@ -1421,7 +1507,8 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
       
       under_surveillance <- FALSE
       next_surveillance_time <- Inf
-      
+    
+    # Surveillance referral and transplant events
     } else if (next_event == "usual_care_surveillance_referral") {
       
       # Usual-care patient is now identified/referred into HCC surveillance.
@@ -1498,6 +1585,7 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
         total_costs <- total_costs + get_treatment_cost(treatment, params) * discount_factor_cost
       }
       
+    # HCC diagnosis events
     } else if (next_event == "symptomatic_diagnosis") {
       
       if (hcc_state != "none" && !hcc_diagnosed) {
@@ -1648,13 +1736,13 @@ simulate_one_patient <- function(patient, arm, params, keep_event_log = FALSE) {
 }
 
 # ================================================================================================
-# Function to run one intervention arm for every patient
+# 6a. Simulate all patients under one intervention arm
 # ================================================================================================
 run_des_arm <- function(cohort, arm, params, keep_event_log = FALSE) {
   sim_list <- future_map(seq_len(nrow(cohort)), function(i) {
     simulate_one_patient(patient = cohort[i, ], arm = arm, params = params, keep_event_log = keep_event_log)
   },
-  .options = furrr_options(seed = TRUE)
+  .options = furrr_options(seed = TRUE) # Ensure reproducible results when running patient simulations in parallel
   )
   
   patient_results <- map_dfr(sim_list, "patient_result")
@@ -1664,7 +1752,7 @@ run_des_arm <- function(cohort, arm, params, keep_event_log = FALSE) {
 }
 
 # ================================================================================================
-# Function to summarise simulation outputs across arms within one replication
+# 6b. Summarise and compare both arms within one replication
 # ================================================================================================
 summarise_simulation_outputs <- function(
     clhc_sim, 
@@ -1948,7 +2036,7 @@ summarise_simulation_outputs <- function(
 }
 
 # ================================================================================================
-# Function to run one replication of the DES (both arms + summary)
+# 6c. Run one complete DES replication
 # ================================================================================================
 run_one_replication <- function(
     rep, 
@@ -2026,7 +2114,7 @@ run_one_replication <- function(
 }
 
 # ================================================================================================
-# Execute all replications
+# 6d. Repeat the DES across all Monte Carlo replications
 # ================================================================================================
 
 # Pre-allocate an empty list to avoid R memory slow-downs during the loop
@@ -2057,7 +2145,7 @@ all_subgroup_incremental_results <- map_dfr(results_list, "subgroup_incremental_
 print(all_incremental_results)
 
 # ================================================================================================
-# Final pooled summaries across all replications
+# 7. Final pooled summaries across all replications
 # ================================================================================================
 
 # ----------------------------------------------------------------------
@@ -2094,7 +2182,7 @@ pooled_incremental_results <- all_incremental_results %>%
     mean_inc_qalys = mean(incremental_qalys),
     mean_inc_life_years = mean(incremental_life_years),
     
-    # Monte Carlo Standard Errors (MCSE) for first-order uncertainty
+    # Monte Carlo Standard Errors (MCSE) for the pooled mean estimates
     mcse_inc_costs = sd(incremental_costs) / sqrt(n()),
     mcse_inc_qalys = sd(incremental_qalys) / sqrt(n()),
     mcse_inc_life_years = sd(incremental_life_years) / sqrt(n()),
@@ -2238,7 +2326,8 @@ stability_plot <- replication_stability %>%
     ncol = 2
   ) +
   scale_x_continuous(
-    breaks = seq(0, 500, by = 100),
+    breaks = scales::breaks_pretty(n = 6),
+    limits = c(1, n_replications),
     expand = expansion(mult = c(0, 0.02))
   ) +
   scale_y_continuous(
@@ -2346,16 +2435,11 @@ pooled_subgroup_results <-
     .groups = "drop"
   )
 
-print(
-  pooled_subgroup_results,
-  n = Inf
-)
-
 # Reset R session to sequential mode (from parallel)
 plan(sequential)
 
 # ================================================================================================
-# Save DES outputs
+# 8a. Save DES outputs
 # ================================================================================================
 
 # Save overall cohort results

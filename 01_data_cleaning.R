@@ -95,7 +95,7 @@ renamed_columns <- c(
 # ================================================================================================
 
 # ----------------------------------------------------------------------
-# 1. Return FibroScan LSM category (Positive, Moderate, Negative)
+# Return FibroScan LSM category (Positive, Moderate, Negative)
 # ----------------------------------------------------------------------
 
 map_fibroscan_function <- function(fibroscan_result, mapping_file) {
@@ -135,7 +135,7 @@ map_fibroscan_function <- function(fibroscan_result, mapping_file) {
 }
 
 # ----------------------------------------------------------------------
-# 2. Format column according to mapping table
+# Format column according to mapping table
 # ----------------------------------------------------------------------
 
 map_column_function <- function(cell_value, mapping_file) {

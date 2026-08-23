@@ -1,4 +1,4 @@
-## 2) CLHC logistic regression model script ##
+## 2) CLHC surveillance attendance logistic regression model script ##
 
 # This is the second script in the CLHC Cost-Utility Analysis repository.
 # It implements four logistic regression models, evaluates the performance
@@ -22,6 +22,8 @@ library(ggplot2)
 library(scales)
 library(pROC)
 library(car)
+library(broom)
+library(broom.helpers)
 
 # Set random seed for reproducibility
 set.seed(12345)
@@ -30,7 +32,7 @@ set.seed(12345)
 # Set whether to filter to patients with a positive FibroScan only (TRUE/FALSE); 
 # use TRUE for creation of simulation cohort and FALSE for full cohort summary statistics
 filter_to_positive_fibroscan <- TRUE
-target_long_term_uptake_mean <- 0.60
+target_long_term_uptake_mean <- 0.60 # For deterministic sensitivity analysis: lower = 0.40, upper = 0.80
 
 # Set project directory from the current working directory
 clhc_project_directory <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
