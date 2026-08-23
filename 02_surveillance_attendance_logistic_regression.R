@@ -461,7 +461,7 @@ uptake_model_df_predictions <- uptake_model_df %>%
 
 # Uncomment when using real data
 
-# vif_results_raw <- car::vif(selected_model)
+# vif_results_raw <- vif(selected_model)
 # 
 # if (is.matrix(vif_results_raw)) {
 #   vif_results <- as.data.frame(vif_results_raw) %>%
@@ -485,7 +485,7 @@ uptake_model_df_predictions <- uptake_model_df %>%
 cooks_dist_plot <- plot(selected_model, which = 4, id.n = 5)
 
 # Discrimination (ROC AUC and ROC plot)
-roc_obj <- pROC::roc(
+roc_obj <- roc(
   response = uptake_model_df_predictions$ultrasound_attended,
   predictor = uptake_model_df_predictions$pred_prob,
   levels = c(0, 1),
@@ -493,7 +493,7 @@ roc_obj <- pROC::roc(
   quiet = TRUE
 )
 
-apparent_auc <- as.numeric(pROC::auc(roc_obj))
+apparent_auc <- as.numeric(auc(roc_obj))
 
 roc_plot <- ggroc(
   roc_obj,
@@ -534,8 +534,8 @@ calibration_plot <- uptake_model_df_predictions %>%
   geom_abline(intercept = 0, slope = 1, colour = "grey50", linetype = "dashed") + # Perfect calibration
   geom_point(colour = "#005EB8", size = 2) + # NHS Blue
   geom_line(colour = "#005EB8") +
-  scale_x_continuous(limits = c(0.5, 1), labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(limits = c(0.5, 1), labels = scales::percent_format(accuracy = 1)) +
+  scale_x_continuous(limits = c(0.5, 1), labels = percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(0.5, 1), labels = percent_format(accuracy = 1)) +
   labs(
     title = "Calibration plot: predicted vs observed attendance",
     subtitle = "Points represent deciles of predicted probability",
@@ -566,7 +566,7 @@ probability_by_attendance_plot <- uptake_model_df_predictions %>%
     linewidth = 0.8
   ) +
   scale_x_continuous(
-    labels = scales::percent_format(accuracy = 1),
+    labels = percent_format(accuracy = 1),
     limits = c(0, 1)
   ) +
   scale_colour_manual(values = c("Did not attend" = "#DA291C", "Attended" = "#005EB8")) +

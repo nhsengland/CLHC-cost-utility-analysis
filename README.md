@@ -92,7 +92,7 @@ Package versions used for the final analysis are recorded in `renv.lock`.
 
 Random-number seeds are fixed within the scripts. Baseline cirrhosis status and background mortality are sampled once per patient and held constant across simulation arms and replications to reduce stochastic variation.
 
-The discrete event simulation used 500 Monte Carlo replications to produce the official results for the dissertation. This takes several hours to run and the number of replications (`n_replications`) has therefore been set to 5 for this synthetic demonstration. Cumulative mean plot will therefore differ to official results.
+The discrete event simulation used 500 Monte Carlo replications to produce the official results for the dissertation. This takes several hours to run so the number of replications (`n_replications`) has been set to five for this synthetic demonstration. Cumulative mean plot will therefore differ to official results.
 
 ## Outputs
 

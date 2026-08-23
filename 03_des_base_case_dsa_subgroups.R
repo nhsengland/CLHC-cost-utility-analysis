@@ -30,9 +30,11 @@ library(ggplot2)
 library(furrr)
 library(future)
 
-# Use all logical cores, except 2 (for operating system stability), in parallel to speed up simulation
-n_workers <- max(1, future::availableCores()-2)
-plan(multisession, workers = n_workers)
+# The original simulation used all logical cores in parallel to speed up simulation
+# This is not required for this synthetic run so commented out:
+# n_workers <- max(1, availableCores())
+# plan(multisession, workers = n_workers)
+plan(sequential) # Sequential processing used for smaller synthetic demonstration
 
 # Set random seed for reproducibility
 set.seed(12345)
