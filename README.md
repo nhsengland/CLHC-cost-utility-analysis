@@ -138,3 +138,5 @@ Generated synthetic DES outputs include:
     -   `subgroup_analyses/subgroup_cohort_summary.rds`
     -   `subgroup_analyses/all_subgroup_incremental_results.rds`
     -   `subgroup_analyses/pooled_subgroup_results.rds`
+
+Pre-generated outputs from the synthetic data are included in the repository for quick inspection. These will be overwritten with newly generated synthetic outputs if the scripts are run.
