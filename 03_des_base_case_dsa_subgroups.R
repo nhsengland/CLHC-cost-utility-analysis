@@ -5,7 +5,7 @@
 # uses), as well as the subgroup analyses and Monte Carlo precision checks.
 
 # The script must be run from the root of the extracted repository,
-# preferably by opening CLHC_dissertation_code.Rproj
+# preferably by opening CLHC-cost-utility-analysis.Rproj
 
 # ================================================================================================
 # Import libraries, define simulation configs, set file directories, and load simulation cohort

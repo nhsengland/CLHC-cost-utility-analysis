@@ -10,7 +10,7 @@
 # for the CLHC arm and from surveillance referral or symptomatic HCC diagnosis in the usual care arm).
 
 # The script must be run from the root of the extracted repository,
-# preferably by opening CLHC_dissertation_code.Rproj
+# preferably by opening CLHC-cost-utility-analysis.Rproj
 
 # ================================================================================================
 # Import libraries, define simulation configs, set file directories, and load simulation cohort

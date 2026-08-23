@@ -7,7 +7,7 @@
 # cohort for use in the DES.
 
 # The script must be run from the root of the extracted repository,
-# preferably by opening CLHC_dissertation_code.Rproj
+# preferably by opening CLHC-cost-utility-analysis.Rproj
 
 # ================================================================================================
 # Import libraries, define configs, and set file directories

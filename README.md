@@ -37,7 +37,7 @@ All analysis used for the dissertation was undertaken within the authorised NHS 
 Open the following R project file in RStudio:
 
 ``` text
-CLHC_dissertation_code.Rproj
+CLHC-cost-utility-analysis.Rproj
 ```
 
 Opening the project file should set the extracted repository root as the working directory.
