@@ -1,0 +1,26 @@
+{
+    "id": "195F331A",
+    "path": "~/CAIT/Diss/CLHC/Final dissertation/CLHC-cost-utility-analysis/02_surveillance_attendance_logistic_regression.R",
+    "project_path": "02_surveillance_attendance_logistic_regression.R",
+    "type": "r_source",
+    "hash": "3553242360",
+    "contents": "",
+    "dirty": false,
+    "created": 1787493915107.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "268,22",
+        "scrollLine": "252"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1787501423,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1787501424007,
+    "read_only": false,
+    "read_only_alternatives": []
+}
